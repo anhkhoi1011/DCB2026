@@ -2,10 +2,8 @@ import React from 'react';
 import {
   LayoutDashboard,
   GitFork,
-  UserCheck,
-  CheckSquare,
-  Users,
   TableProperties,
+  Users,
   FileSpreadsheet,
   Settings,
   ChevronLeft,
@@ -22,10 +20,8 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
   { id: 'map', label: 'Bản đồ công việc', icon: GitFork },
-  { id: 'my-work', label: 'Công việc của tôi', icon: UserCheck },
-  { id: 'checklist', label: 'Checklist', icon: CheckSquare },
+  { id: 'tasks', label: 'Danh sách công việc', icon: TableProperties },
   { id: 'members', label: 'Thành viên', icon: Users },
-  { id: 'tasks', label: 'Danh sách Task', icon: TableProperties },
   { id: 'sheets', label: 'Google Sheets', icon: FileSpreadsheet },
   { id: 'settings', label: 'Cài đặt', icon: Settings },
 ];

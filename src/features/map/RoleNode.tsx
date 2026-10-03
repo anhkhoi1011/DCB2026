@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { User, CheckCircle2 } from 'lucide-react';
-import { useAppStore, getTaskProgress } from '../../store/useAppStore';
+import { User } from 'lucide-react';
+import { useAppStore } from '../../store/useAppStore';
 import { RoleId } from '../../types';
 
 export interface RoleNodeData {
@@ -11,24 +11,18 @@ export interface RoleNodeData {
 }
 
 export const RoleNode = memo(({ data }: { data: RoleNodeData }) => {
-  const { roles, people, tasks, checklists, setSelectedRoleId } = useAppStore();
+  const { roles, people, tasks, setSelectedRoleId } = useAppStore();
   const role = roles.find((r) => r.id === data.roleId);
   const primaryPerson = people.find((p) => p.roleId === data.roleId && p.isPrimary);
 
   if (!role) return null;
 
-  const roleTasks = tasks.filter((t) => t.ownerRoleId === data.roleId);
-  const collabTasks = tasks.filter((t) => (t.collaboratorRoleIds || []).includes(data.roleId));
-  const totalInvolved = [...roleTasks, ...collabTasks];
-
+  const roleOwnerTasks = tasks.filter((t) => t.ownerRoleId === data.roleId);
+  const roleCollabTasks = tasks.filter((t) =>
+    (t.collaborators || []).some((c) => c.roleId === data.roleId)
+  );
+  const totalInvolved = [...roleOwnerTasks, ...roleCollabTasks];
   const completedCount = totalInvolved.filter((t) => t.status === 'DONE').length;
-  const avgProgress =
-    totalInvolved.length > 0
-      ? Math.round(
-          totalInvolved.reduce((acc, t) => acc + getTaskProgress(t, checklists), 0) /
-            totalInvolved.length
-        )
-      : 0;
 
   const borderColors: Record<RoleId, string> = {
     1: 'border-blue-500 bg-blue-50/90 dark:bg-blue-950/80 shadow-blue-500/20',
@@ -44,13 +38,6 @@ export const RoleNode = memo(({ data }: { data: RoleNodeData }) => {
     4: 'text-orange-700 dark:text-orange-300 bg-orange-100/70 dark:bg-orange-900/50',
   };
 
-  const progressBarColors: Record<RoleId, string> = {
-    1: 'bg-blue-600',
-    2: 'bg-purple-600',
-    3: 'bg-emerald-600',
-    4: 'bg-orange-600',
-  };
-
   return (
     <div
       onClick={() => setSelectedRoleId(data.roleId)}
@@ -64,7 +51,6 @@ export const RoleNode = memo(({ data }: { data: RoleNodeData }) => {
           : 'hover:scale-102'
       }`}
     >
-      {/* 4 Handles for orthogonal or smooth connections */}
       <Handle type="target" position={Position.Top} className="!opacity-70" />
       <Handle type="source" position={Position.Bottom} className="!opacity-70" />
       <Handle type="target" position={Position.Left} id="left" className="!opacity-70" />
@@ -78,7 +64,7 @@ export const RoleNode = memo(({ data }: { data: RoleNodeData }) => {
           ROLE 0{data.roleId}
         </span>
         <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-          {completedCount}/{totalInvolved.length} Hoàn thành
+          {completedCount}/{totalInvolved.length} hoàn thành
         </span>
       </div>
 
@@ -88,7 +74,7 @@ export const RoleNode = memo(({ data }: { data: RoleNodeData }) => {
       </h3>
 
       {/* Primary Person */}
-      <div className="flex items-center gap-2 p-2 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200/60 dark:border-slate-800 mb-3">
+      <div className="flex items-center gap-2 p-2 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200/60 dark:border-slate-800 mb-2.5">
         <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-700 dark:text-slate-300 shrink-0">
           {primaryPerson?.shortName ? primaryPerson.shortName.charAt(0) : <User className="w-3.5 h-3.5" />}
         </div>
@@ -103,24 +89,10 @@ export const RoleNode = memo(({ data }: { data: RoleNodeData }) => {
       </div>
 
       {/* Duty Summary */}
-      <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-300 font-medium mb-1.5 px-0.5">
-        <span>{roleTasks.length} việc chính</span>
+      <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-300 font-medium px-0.5">
+        <span>{roleOwnerTasks.length} việc cầm chính</span>
         <span>·</span>
-        <span>{collabTasks.length} việc phối hợp</span>
-      </div>
-
-      {/* Progress */}
-      <div className="space-y-1">
-        <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500">
-          <span>Tiến độ</span>
-          <span>{avgProgress}%</span>
-        </div>
-        <div className="w-full h-1.5 bg-slate-200/80 dark:bg-slate-800 rounded-full overflow-hidden">
-          <div
-            className={`h-full transition-all duration-300 ${progressBarColors[data.roleId]}`}
-            style={{ width: `${avgProgress}%` }}
-          />
-        </div>
+        <span>{roleCollabTasks.length} việc phối hợp</span>
       </div>
     </div>
   );

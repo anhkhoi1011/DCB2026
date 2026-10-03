@@ -32,34 +32,55 @@ export type TaskStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'DONE' | 'BLOCKED' | 'O
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 
 export type TaskCategory =
-  | 'Nghiên cứu'
   | 'Kế hoạch'
+  | 'Nghiên cứu'
   | 'Gian hàng'
   | 'Marketing'
   | 'Nội dung'
   | 'Vận hành'
-  | 'Dữ liệu'
   | 'Khách hàng'
+  | 'Dữ liệu'
   | 'Báo cáo'
-  | 'Khác';
+  | 'Khác'
+  | string;
 
-export type RelationType = 'OWNER' | 'COLLABORATOR' | 'APPROVER';
-
-export interface TaskParticipant {
-  id: string;
-  taskId: string;
+export interface TaskCollaborator {
+  personId: string;
   roleId: RoleId;
-  relationType: RelationType;
   responsibility?: string;
 }
 
-export interface ChecklistItem {
+export interface Task {
   id: string;
-  taskId: string;
-  text: string;
-  assigneeRoleId?: RoleId;
-  completed: boolean;
-  sortOrder: number;
+  title: string;
+  category?: string;
+
+  ownerPersonId: string;
+  ownerRoleId: RoleId;
+
+  collaborators: TaskCollaborator[];
+
+  approverPersonId?: string;
+  approverRoleId?: RoleId;
+
+  status: TaskStatus;
+  priority?: TaskPriority;
+
+  dueAt?: string | null; // Format: YYYY-MM-DD or YYYY-MM-DDTHH:mm
+
+  output: string; // OUTPUT CẦN BÀN GIAO
+
+  note?: string;
+
+  dependencyIds?: string[];
+
+  customPosition?: {
+    x: number;
+    y: number;
+  };
+
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type LinkType = 'DEPENDENCY' | 'HANDOFF' | 'FEEDBACK';
@@ -70,32 +91,6 @@ export interface TaskLink {
   targetTaskId: string;
   linkType: LinkType;
   label?: string;
-}
-
-export interface Task {
-  id: string;
-  title: string;
-  category: TaskCategory;
-  ownerRoleId: RoleId;
-  collaboratorRoleIds: RoleId[];
-  approverRoleId?: RoleId;
-  participantRoleIds: RoleId[];
-  status: TaskStatus;
-  priority: TaskPriority;
-  description: string;
-  howTo?: string;
-  definitionOfDone?: string;
-  inputs?: string[];
-  outputs?: string[];
-  responsibilitiesByRole: Partial<Record<RoleId, string>>;
-  dueDate?: string; // YYYY-MM-DD
-  startDate?: string;
-  manualProgress?: number; // 0 - 100 when no checklist
-  notes?: string;
-  customPosition?: { x: number; y: number };
-  createdAt: string;
-  updatedAt: string;
-  updatedBy?: string;
 }
 
 export interface AppSettings {

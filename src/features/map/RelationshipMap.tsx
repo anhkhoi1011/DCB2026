@@ -1,16 +1,17 @@
 import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   BackgroundVariant,
   Controls,
-  useNodesState,
-  useEdgesState,
+  MiniMap,
   Node,
   Edge,
   MarkerType,
 } from '@xyflow/react';
 import { useAppStore } from '../../store/useAppStore';
+import { useResolvedTheme } from '../../hooks/useResolvedTheme';
 import { RoleNode } from './RoleNode';
 import { TaskNode } from './TaskNode';
 import { RelationshipEdge } from './RelationshipEdge';
@@ -18,18 +19,21 @@ import { MapToolbar } from './MapToolbar';
 import { MapLegend } from './MapLegend';
 import { DEFAULT_ROLE_POSITIONS, calculateAutomaticLayout } from '../../utils/layout';
 import { RoleId } from '../../types';
-import { X, User } from 'lucide-react';
 
 const nodeTypes = {
+  role: RoleNode,
+  task: TaskNode,
   roleNode: RoleNode,
   taskNode: TaskNode,
 };
 
 const edgeTypes = {
   relationshipEdge: RelationshipEdge,
+  relationship: RelationshipEdge,
+  default: RelationshipEdge,
 };
 
-export const RelationshipMap: React.FC = () => {
+const RelationshipMapContent: React.FC = () => {
   const {
     roles,
     people,
@@ -37,17 +41,17 @@ export const RelationshipMap: React.FC = () => {
     taskLinks,
     selectedTaskId,
     selectedRoleId,
-    setSelectedTaskId,
-    setSelectedRoleId,
+    perspectivePersonId,
     clearSelection,
     settings,
     updateTaskPosition,
   } = useAppStore();
 
+  const { resolvedTheme } = useResolvedTheme();
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showMiniMap, setShowMiniMap] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Keyboard shortcut: ESC to clear selection
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -58,51 +62,64 @@ export const RelationshipMap: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [clearSelection]);
 
-  // Compute calculated positions
   const autoPositions = useMemo(() => calculateAutomaticLayout(tasks), [tasks]);
 
-  // Set of Active Role IDs in the current selection
+  // Active Role IDs
   const activeRoleIds = useMemo<Set<RoleId>>(() => {
     const set = new Set<RoleId>();
     if (selectedRoleId) {
       set.add(selectedRoleId);
+    } else if (perspectivePersonId) {
+      const person = people.find((p) => p.id === perspectivePersonId);
+      if (person) set.add(person.roleId);
     } else if (selectedTaskId) {
       const task = tasks.find((t) => t.id === selectedTaskId);
       if (task) {
         set.add(task.ownerRoleId);
-        (task.collaboratorRoleIds || []).forEach((r) => set.add(r));
+        (task.collaborators || []).forEach((c) => set.add(c.roleId));
         if (task.approverRoleId) set.add(task.approverRoleId);
       }
     }
     return set;
-  }, [selectedRoleId, selectedTaskId, tasks]);
+  }, [selectedRoleId, perspectivePersonId, selectedTaskId, tasks, people]);
 
-  // Set of Active Task IDs in current selection
+  // Active Task IDs
   const activeTaskIds = useMemo<Set<string>>(() => {
     const set = new Set<string>();
     if (selectedTaskId) {
       set.add(selectedTaskId);
-      // If dependency tracing is ON, include direct predecessors and successors
       if (settings.showDependenciesOnTrace) {
         taskLinks.forEach((link) => {
           if (link.targetTaskId === selectedTaskId) set.add(link.sourceTaskId);
           if (link.sourceTaskId === selectedTaskId) set.add(link.targetTaskId);
         });
       }
-    } else if (selectedRoleId) {
-      // All tasks where selectedRoleId is owner or collaborator
+    } else if (perspectivePersonId) {
+      // Precision Person trace: ONLY tasks that this specific person participates in!
       tasks.forEach((t) => {
-        if (t.ownerRoleId === selectedRoleId || (t.collaboratorRoleIds || []).includes(selectedRoleId)) {
+        const isOwner = t.ownerPersonId === perspectivePersonId;
+        const isCollab = (t.collaborators || []).some((c) => c.personId === perspectivePersonId);
+        const isApprover = t.approverPersonId === perspectivePersonId;
+        if (isOwner || isCollab || isApprover) {
+          set.add(t.id);
+        }
+      });
+    } else if (selectedRoleId) {
+      // Role trace: all tasks of this role
+      tasks.forEach((t) => {
+        const isOwner = t.ownerRoleId === selectedRoleId;
+        const isCollab = (t.collaborators || []).some((c) => c.roleId === selectedRoleId);
+        if (isOwner || isCollab) {
           set.add(t.id);
         }
       });
     }
     return set;
-  }, [selectedTaskId, selectedRoleId, tasks, taskLinks, settings.showDependenciesOnTrace]);
+  }, [selectedTaskId, perspectivePersonId, selectedRoleId, tasks, taskLinks, settings.showDependenciesOnTrace]);
 
-  const hasSelection = selectedRoleId !== null || selectedTaskId !== null;
+  const hasSelection = selectedRoleId !== null || selectedTaskId !== null || perspectivePersonId !== null;
 
-  // Build XYFlow Nodes
+  // Build Nodes
   const nodes = useMemo<Node[]>(() => {
     const roleNodes: Node[] = roles.map((role) => {
       const pos = DEFAULT_ROLE_POSITIONS[role.id];
@@ -118,7 +135,7 @@ export const RelationshipMap: React.FC = () => {
           isDimmed,
           isHighlighted,
         },
-        draggable: false, // Core roles remain anchor landmarks
+        draggable: false,
       };
     });
 
@@ -145,13 +162,13 @@ export const RelationshipMap: React.FC = () => {
     return [...roleNodes, ...taskNodes];
   }, [roles, tasks, autoPositions, activeRoleIds, activeTaskIds, hasSelection, selectedTaskId, settings.isLockedLayout]);
 
-  // Build XYFlow Edges
+  // Build Edges
   const edges = useMemo<Edge[]>(() => {
     const edgeList: Edge[] = [];
 
-    // 1. Responsibility Edges (Role -> Task)
+    // 1. Responsibility Edges
     tasks.forEach((task) => {
-      // Owner edge
+      // Owner edge: solid #2563EB, 3px, arrow
       const isOwnerDimmed =
         hasSelection && !(activeRoleIds.has(task.ownerRoleId) && activeTaskIds.has(task.id));
       const isOwnerHighlighted =
@@ -162,6 +179,12 @@ export const RelationshipMap: React.FC = () => {
         source: `role-${task.ownerRoleId}`,
         target: `task-${task.id}`,
         type: 'relationshipEdge',
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: '#2563EB',
+          width: 14,
+          height: 14,
+        },
         data: {
           relationshipType: 'OWNER',
           roleId: task.ownerRoleId,
@@ -171,21 +194,27 @@ export const RelationshipMap: React.FC = () => {
         },
       });
 
-      // Collaborator edges
-      (task.collaboratorRoleIds || []).forEach((cRole) => {
+      // Collaborator edges: dashed #94A3B8, 2px, arrow
+      (task.collaborators || []).forEach((collab) => {
         const isCollabDimmed =
-          hasSelection && !(activeRoleIds.has(cRole) && activeTaskIds.has(task.id));
+          hasSelection && !(activeRoleIds.has(collab.roleId) && activeTaskIds.has(task.id));
         const isCollabHighlighted =
-          activeRoleIds.has(cRole) && activeTaskIds.has(task.id);
+          activeRoleIds.has(collab.roleId) && activeTaskIds.has(task.id);
 
         edgeList.push({
-          id: `edge-collab-${cRole}-${task.id}`,
-          source: `role-${cRole}`,
+          id: `edge-collab-${collab.roleId}-${task.id}`,
+          source: `role-${collab.roleId}`,
           target: `task-${task.id}`,
           type: 'relationshipEdge',
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: '#94A3B8',
+            width: 12,
+            height: 12,
+          },
           data: {
             relationshipType: 'COLLABORATOR',
-            roleId: cRole,
+            roleId: collab.roleId,
             isDimmed: isCollabDimmed,
             isHighlighted: isCollabHighlighted,
             label: isCollabHighlighted ? 'Phối hợp' : undefined,
@@ -193,11 +222,11 @@ export const RelationshipMap: React.FC = () => {
         });
       });
 
-      // Approver edge (if approver is not owner or collab already)
+      // Approver edge: solid #F59E0B, 2px, arrow
       if (
         task.approverRoleId &&
         task.approverRoleId !== task.ownerRoleId &&
-        !(task.collaboratorRoleIds || []).includes(task.approverRoleId)
+        !(task.collaborators || []).some((c) => c.roleId === task.approverRoleId)
       ) {
         const isApprDimmed =
           hasSelection && !(activeRoleIds.has(task.approverRoleId) && activeTaskIds.has(task.id));
@@ -209,22 +238,29 @@ export const RelationshipMap: React.FC = () => {
           source: `role-${task.approverRoleId}`,
           target: `task-${task.id}`,
           type: 'relationshipEdge',
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: '#F59E0B',
+            width: 12,
+            height: 12,
+          },
           data: {
             relationshipType: 'APPROVER',
             roleId: task.approverRoleId,
             isDimmed: isApprDimmed,
             isHighlighted: isApprHighlighted,
-            label: isApprHighlighted ? 'Chốt' : undefined,
+            label: isApprHighlighted ? 'Người chốt' : undefined,
           },
         });
       }
     });
 
-    // 2. Dependency / Handoff / Feedback Edges (Task -> Task)
+    // 2. Dependency / Handoff / Feedback Edges
     taskLinks.forEach((link) => {
       const isLinkActive =
         activeTaskIds.has(link.sourceTaskId) && activeTaskIds.has(link.targetTaskId);
       const isLinkDimmed = hasSelection && !isLinkActive;
+      const isFeedback = link.linkType === 'FEEDBACK';
 
       edgeList.push({
         id: `link-${link.id}`,
@@ -233,7 +269,7 @@ export const RelationshipMap: React.FC = () => {
         type: 'relationshipEdge',
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: link.linkType === 'FEEDBACK' ? '#ec4899' : '#64748b',
+          color: isFeedback ? '#10B981' : '#64748B',
           width: 14,
           height: 14,
         },
@@ -249,7 +285,6 @@ export const RelationshipMap: React.FC = () => {
     return edgeList;
   }, [tasks, taskLinks, activeRoleIds, activeTaskIds, hasSelection]);
 
-  // Handle task drag stop to save position
   const onNodeDragStop = useCallback(
     (_: any, node: Node) => {
       if (node.id.startsWith('task-')) {
@@ -260,7 +295,6 @@ export const RelationshipMap: React.FC = () => {
     [updateTaskPosition]
   );
 
-  // Fullscreen toggle handler
   const handleToggleFullscreen = () => {
     if (!containerRef.current) return;
     if (!isFullscreen) {
@@ -276,56 +310,28 @@ export const RelationshipMap: React.FC = () => {
     }
   };
 
-  // Determine current active selection label for top breadcrumb
-  let activeSelectionLabel = '';
-  if (selectedTaskId) {
-    const t = tasks.find((item) => item.id === selectedTaskId);
-    if (t) activeSelectionLabel = `Công việc: [${t.id}] ${t.title}`;
-  } else if (selectedRoleId) {
-    const r = roles.find((item) => item.id === selectedRoleId);
-    const p = people.find((item) => item.roleId === selectedRoleId && item.isPrimary);
-    if (r) activeSelectionLabel = `Vai trò: ${r.name} (${p?.fullName})`;
-  }
-
   return (
     <div
       ref={containerRef}
-      className={`relative w-full h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 overflow-hidden ${
+      className={`relative w-full h-full min-h-0 bg-slate-50 dark:bg-slate-950 overflow-hidden ${
         isFullscreen ? 'fixed inset-0 z-50 h-screen' : ''
       }`}
     >
-      {/* Top Breadcrumb Selection Banner */}
-      {activeSelectionLabel && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-3.5 py-1.5 bg-white/95 dark:bg-slate-900/95 border border-blue-500/50 rounded-full shadow-lg backdrop-blur-md animate-fade-in text-xs">
-          <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-          <span className="font-semibold text-slate-800 dark:text-slate-200 max-w-sm truncate">
-            {activeSelectionLabel}
-          </span>
-          <button
-            onClick={clearSelection}
-            className="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition"
-            title="Xóa lựa chọn (Phím ESC)"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
-
-      {/* Map Toolbar */}
       <MapToolbar
         isFullscreen={isFullscreen}
         onToggleFullscreen={handleToggleFullscreen}
+        showMiniMap={showMiniMap}
+        onToggleMiniMap={() => setShowMiniMap(!showMiniMap)}
       />
 
-      {/* Map Legend */}
       <MapLegend />
 
-      {/* Main Canvas */}
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        colorMode={resolvedTheme}
         onPaneClick={clearSelection}
         onNodeDragStop={onNodeDragStop}
         fitView
@@ -333,15 +339,45 @@ export const RelationshipMap: React.FC = () => {
         minZoom={0.2}
         maxZoom={1.8}
         proOptions={{ hideAttribution: true }}
+        className="w-full h-full"
       >
         <Background
           variant={BackgroundVariant.Dots}
           gap={24}
           size={1.5}
-          className="opacity-40 dark:opacity-25"
+          color={resolvedTheme === 'dark' ? '#334155' : '#cbd5e1'}
+          className="opacity-50 dark:opacity-40"
         />
         <Controls showInteractive={false} position="bottom-right" className="!shadow-md" />
+        {showMiniMap && (
+          <MiniMap
+            position="bottom-right"
+            className="!bottom-12 !right-4 !m-0 !border !border-slate-200 dark:!border-slate-800 !bg-white/95 dark:!bg-slate-900/95 !rounded-xl !shadow-xl !overflow-hidden"
+            style={{ width: 170, height: 110 }}
+            nodeStrokeWidth={3}
+            nodeColor={(n) => {
+              if (n.type === 'roleNode' || n.type === 'role') {
+                const rId = n.data?.roleId;
+                if (rId === 1) return '#2563EB';
+                if (rId === 2) return '#7C3AED';
+                if (rId === 3) return '#059669';
+                if (rId === 4) return '#EA580C';
+                return '#3B82F6';
+              }
+              return resolvedTheme === 'dark' ? '#475569' : '#94A3B8';
+            }}
+            maskColor={resolvedTheme === 'dark' ? 'rgba(15, 23, 42, 0.7)' : 'rgba(226, 232, 240, 0.5)'}
+          />
+        )}
       </ReactFlow>
     </div>
+  );
+};
+
+export const RelationshipMap: React.FC = () => {
+  return (
+    <ReactFlowProvider>
+      <RelationshipMapContent />
+    </ReactFlowProvider>
   );
 };

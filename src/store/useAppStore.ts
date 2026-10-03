@@ -4,19 +4,18 @@ import {
   Role,
   Person,
   Task,
-  ChecklistItem,
   TaskLink,
   AppSettings,
   SyncState,
   RoleId,
   TaskStatus,
   TaskPriority,
+  TaskCollaborator,
 } from '../types';
 import {
   INITIAL_ROLES,
   INITIAL_PEOPLE,
   INITIAL_TASKS,
-  INITIAL_CHECKLISTS,
   INITIAL_TASK_LINKS,
   INITIAL_SETTINGS,
 } from '../data/seedData';
@@ -25,10 +24,8 @@ import { calculateAutomaticLayout } from '../utils/layout';
 export type NavigationTab =
   | 'overview'
   | 'map'
-  | 'my-work'
-  | 'checklist'
-  | 'members'
   | 'tasks'
+  | 'members'
   | 'sheets'
   | 'settings';
 
@@ -36,7 +33,6 @@ interface AppStoreState {
   roles: Role[];
   people: Person[];
   tasks: Task[];
-  checklists: ChecklistItem[];
   taskLinks: TaskLink[];
   settings: AppSettings;
   syncState: SyncState;
@@ -53,12 +49,19 @@ interface AppStoreState {
   filterStatus: TaskStatus | 'ALL';
   filterPriority: TaskPriority | 'ALL';
   filterRole: RoleId | 'ALL';
+  filterPerson: string | 'ALL';
   filterCategory: string | 'ALL';
+  filterDeadline: 'ALL' | 'OVERDUE' | 'TODAY' | 'UPCOMING' | 'NO_DEADLINE';
+
+  // Multi-select on Task List (Bulk Actions)
+  selectedRowIds: string[];
 
   // Modal / Drawer controls
   isTaskFormOpen: boolean;
   editingTaskId: string | null;
-  completionPromptTaskId: string | null;
+  prefillFromTemplateId: string | null;
+  isDrawerMinimized: boolean;
+  drawerWidth: number;
 
   // Actions
   setActiveTab: (tab: NavigationTab) => void;
@@ -67,29 +70,39 @@ interface AppStoreState {
   setSelectedRoleId: (id: RoleId | null) => void;
   clearSelection: () => void;
   setPerspectivePersonId: (id: string | null) => void;
+  setDrawerMinimized: (minimized: boolean) => void;
+  toggleDrawerMinimized: () => void;
+  setDrawerWidth: (width: number) => void;
+
   setSearchQuery: (query: string) => void;
   setFilterStatus: (status: TaskStatus | 'ALL') => void;
   setFilterPriority: (priority: TaskPriority | 'ALL') => void;
   setFilterRole: (role: RoleId | 'ALL') => void;
+  setFilterPerson: (personId: string | 'ALL') => void;
   setFilterCategory: (category: string | 'ALL') => void;
+  setFilterDeadline: (deadline: 'ALL' | 'OVERDUE' | 'TODAY' | 'UPCOMING' | 'NO_DEADLINE') => void;
 
-  openTaskForm: (taskId?: string) => void;
+  toggleSelectRow: (id: string) => void;
+  selectAllRows: (ids: string[]) => void;
+  clearRowSelection: () => void;
+
+  openTaskForm: (taskId?: string, templateId?: string) => void;
   closeTaskForm: () => void;
-  setCompletionPromptTaskId: (id: string | null) => void;
 
   // Task CRUD
-  addTask: (task: Omit<Task, 'createdAt' | 'updatedAt' | 'participantRoleIds'>) => void;
+  addTask: (task: Omit<Task, 'createdAt' | 'updatedAt'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
-  duplicateTask: (id: string) => void;
   updateTaskPosition: (id: string, pos: { x: number; y: number }) => void;
   resetLayout: () => void;
 
-  // Checklist Actions
-  addChecklistItem: (taskId: string, text: string, assigneeRoleId?: RoleId) => void;
-  toggleChecklistItem: (id: string) => void;
-  deleteChecklistItem: (id: string) => void;
-  updateChecklistItem: (id: string, text: string) => void;
+  // Bulk Actions
+  bulkSetDueAt: (taskIds: string[], dueAt: string | null) => void;
+  bulkSetStatus: (taskIds: string[], status: TaskStatus) => void;
+  bulkSetPriority: (taskIds: string[], priority: TaskPriority) => void;
+  bulkAssignOwner: (taskIds: string[], personId: string, roleId: RoleId) => void;
+  bulkAddCollaborator: (taskIds: string[], collaborator: TaskCollaborator) => void;
+  bulkDeleteTasks: (taskIds: string[]) => void;
 
   // Task Link Actions
   addTaskLink: (link: Omit<TaskLink, 'id'>) => void;
@@ -116,15 +129,35 @@ interface AppStoreState {
   addSyncLog: (status: 'success' | 'warning' | 'error' | 'info', message: string) => void;
 }
 
-// Compute task progress from checklists or manual value
-export function getTaskProgress(task: Task, checklists: ChecklistItem[]): number {
-  const items = checklists.filter((c) => c.taskId === task.id);
-  if (items.length > 0) {
-    const done = items.filter((c) => c.completed).length;
-    return Math.round((done / items.length) * 100);
+// 82 Old seed IDs to prune from active task list on migration
+const OLD_82_SEED_IDS = new Set([
+  'L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7',
+  'B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8',
+  'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11', 'C12', 'C13', 'C14', 'C15',
+  'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10',
+  'E1', 'E2', 'E3', 'E4',
+  'F1', 'F2', 'F3', 'F4',
+  'G1', 'G2', 'G3', 'G4',
+  'H1', 'H2', 'H3', 'H4', 'H5',
+  'I1', 'I2', 'I3', 'I4', 'I5',
+  'J1', 'J2', 'J3', 'J4', 'J5', 'J6',
+  'K1', 'K2',
+  'L1_MKT', 'L2_MKT',
+  'M1', 'M2',
+  'N1', 'N2', 'N3',
+  'O1', 'O2', 'O3', 'O4', 'O5',
+]);
+
+// Backup old state before migration
+if (typeof window !== 'undefined' && window.localStorage) {
+  try {
+    const rawOld = window.localStorage.getItem('dbc-task-system-2026');
+    if (rawOld && !window.localStorage.getItem('dbc-pre-refactor-backup')) {
+      window.localStorage.setItem('dbc-pre-refactor-backup', rawOld);
+    }
+  } catch (e) {
+    console.warn('Backup old state warning:', e);
   }
-  if (task.status === 'DONE') return 100;
-  return task.manualProgress || 0;
 }
 
 export const useAppStore = create<AppStoreState>()(
@@ -133,7 +166,6 @@ export const useAppStore = create<AppStoreState>()(
       roles: INITIAL_ROLES,
       people: INITIAL_PEOPLE,
       tasks: INITIAL_TASKS,
-      checklists: INITIAL_CHECKLISTS,
       taskLinks: INITIAL_TASK_LINKS,
       settings: INITIAL_SETTINGS,
       syncState: {
@@ -146,7 +178,7 @@ export const useAppStore = create<AppStoreState>()(
             id: 'log-1',
             timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
             status: 'info',
-            message: 'Hệ thống khởi chạy ở chế độ Dữ liệu Nội bộ (Local Mode)',
+            message: 'Hệ thống DBC 2026 V2 khởi chạy ở chế độ Dữ liệu Nội bộ (Local Mode)',
           },
         ],
       },
@@ -161,44 +193,76 @@ export const useAppStore = create<AppStoreState>()(
       filterStatus: 'ALL',
       filterPriority: 'ALL',
       filterRole: 'ALL',
+      filterPerson: 'ALL',
       filterCategory: 'ALL',
+      filterDeadline: 'ALL',
+
+      selectedRowIds: [],
 
       isTaskFormOpen: false,
       editingTaskId: null,
-      completionPromptTaskId: null,
+      prefillFromTemplateId: null,
+      isDrawerMinimized: false,
+      drawerWidth: 380,
 
       setActiveTab: (tab) => set({ activeTab: tab }),
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       setSelectedTaskId: (id) => set({ selectedTaskId: id, selectedRoleId: null }),
       setSelectedRoleId: (id) => set({ selectedRoleId: id, selectedTaskId: null }),
       clearSelection: () => set({ selectedTaskId: null, selectedRoleId: null }),
+      setDrawerMinimized: (minimized) => set({ isDrawerMinimized: minimized }),
+      toggleDrawerMinimized: () => set((s) => ({ isDrawerMinimized: !s.isDrawerMinimized })),
+      setDrawerWidth: (width) => set({ drawerWidth: Math.min(520, Math.max(280, width)) }),
+
       setPerspectivePersonId: (id) => {
-        set({ perspectivePersonId: id });
-        if (id) {
-          const person = get().people.find((p) => p.id === id);
-          if (person) {
-            set({ selectedRoleId: person.roleId, selectedTaskId: null });
-          }
-        }
+        set({ perspectivePersonId: id, selectedRoleId: null, selectedTaskId: null });
       },
+
       setSearchQuery: (query) => set({ searchQuery: query }),
       setFilterStatus: (status) => set({ filterStatus: status }),
       setFilterPriority: (priority) => set({ filterPriority: priority }),
       setFilterRole: (role) => set({ filterRole: role }),
+      setFilterPerson: (personId) => set({ filterPerson: personId }),
       setFilterCategory: (category) => set({ filterCategory: category }),
+      setFilterDeadline: (deadline) => set({ filterDeadline: deadline }),
 
-      openTaskForm: (taskId) => set({ isTaskFormOpen: true, editingTaskId: taskId || null }),
-      closeTaskForm: () => set({ isTaskFormOpen: false, editingTaskId: null }),
-      setCompletionPromptTaskId: (id) => set({ completionPromptTaskId: id }),
+      toggleSelectRow: (id) => {
+        set((state) => {
+          const exists = state.selectedRowIds.includes(id);
+          return {
+            selectedRowIds: exists
+              ? state.selectedRowIds.filter((rowId) => rowId !== id)
+              : [...state.selectedRowIds, id],
+          };
+        });
+      },
+
+      selectAllRows: (ids) => {
+        set((state) => ({
+          selectedRowIds: state.selectedRowIds.length === ids.length ? [] : ids,
+        }));
+      },
+
+      clearRowSelection: () => set({ selectedRowIds: [] }),
+
+      openTaskForm: (taskId, templateId) =>
+        set({
+          isTaskFormOpen: true,
+          editingTaskId: taskId || null,
+          prefillFromTemplateId: templateId || null,
+        }),
+
+      closeTaskForm: () =>
+        set({
+          isTaskFormOpen: false,
+          editingTaskId: null,
+          prefillFromTemplateId: null,
+        }),
 
       addTask: (newTaskData) => {
-        const participantRoleIds = Array.from(
-          new Set([newTaskData.ownerRoleId, ...(newTaskData.collaboratorRoleIds || [])])
-        );
         const now = new Date().toISOString();
         const newTask: Task = {
           ...newTaskData,
-          participantRoleIds,
           createdAt: now,
           updatedAt: now,
         };
@@ -211,62 +275,17 @@ export const useAppStore = create<AppStoreState>()(
 
       updateTask: (id, updates) => {
         const now = new Date().toISOString();
-        set((state) => {
-          const updatedTasks = state.tasks.map((t) => {
-            if (t.id !== id) return t;
-            const updated = { ...t, ...updates, updatedAt: now };
-            if (updates.ownerRoleId !== undefined || updates.collaboratorRoleIds !== undefined) {
-              const owner = updates.ownerRoleId !== undefined ? updates.ownerRoleId : t.ownerRoleId;
-              const collabs =
-                updates.collaboratorRoleIds !== undefined
-                  ? updates.collaboratorRoleIds
-                  : t.collaboratorRoleIds;
-              updated.participantRoleIds = Array.from(new Set([owner, ...(collabs || [])]));
-            }
-            return updated;
-          });
-          return { tasks: updatedTasks };
-        });
+        set((state) => ({
+          tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...updates, updatedAt: now } : t)),
+        }));
       },
 
       deleteTask: (id) => {
         set((state) => ({
           tasks: state.tasks.filter((t) => t.id !== id),
-          checklists: state.checklists.filter((c) => c.taskId !== id),
           taskLinks: state.taskLinks.filter((l) => l.sourceTaskId !== id && l.targetTaskId !== id),
           selectedTaskId: state.selectedTaskId === id ? null : state.selectedTaskId,
-        }));
-      },
-
-      duplicateTask: (id) => {
-        const state = get();
-        const original = state.tasks.find((t) => t.id === id);
-        if (!original) return;
-        const now = new Date().toISOString();
-        const newId = `T-${Date.now().toString(36).toUpperCase()}`;
-        const clonedTask: Task = {
-          ...original,
-          id: newId,
-          title: `${original.title} (Bản sao)`,
-          createdAt: now,
-          updatedAt: now,
-          customPosition: original.customPosition
-            ? { x: original.customPosition.x + 30, y: original.customPosition.y + 30 }
-            : undefined,
-        };
-
-        const originalChecklists = state.checklists.filter((c) => c.taskId === id);
-        const clonedChecklists = originalChecklists.map((c, i) => ({
-          ...c,
-          id: `ck-${newId}-${i + 1}`,
-          taskId: newId,
-          completed: false,
-        }));
-
-        set((s) => ({
-          tasks: [...s.tasks, clonedTask],
-          checklists: [...s.checklists, ...clonedChecklists],
-          selectedTaskId: newId,
+          selectedRowIds: state.selectedRowIds.filter((rowId) => rowId !== id),
         }));
       },
 
@@ -287,61 +306,84 @@ export const useAppStore = create<AppStoreState>()(
         }));
       },
 
-      addChecklistItem: (taskId, text, assigneeRoleId) => {
-        const id = `ck-${Date.now().toString(36)}`;
-        const state = get();
-        const existing = state.checklists.filter((c) => c.taskId === taskId);
-        const newItem: ChecklistItem = {
-          id,
-          taskId,
-          text,
-          assigneeRoleId,
-          completed: false,
-          sortOrder: existing.length + 1,
-        };
-        set((s) => ({
-          checklists: [...s.checklists, newItem],
+      // Bulk Operations
+      bulkSetDueAt: (taskIds, dueAt) => {
+        const now = new Date().toISOString();
+        const setIds = new Set(taskIds);
+        set((state) => ({
+          tasks: state.tasks.map((t) => (setIds.has(t.id) ? { ...t, dueAt, updatedAt: now } : t)),
+          selectedRowIds: [],
         }));
       },
 
-      toggleChecklistItem: (id) => {
-        const state = get();
-        let targetTaskId: string | null = null;
-        let allCompletedNow = false;
-
-        const updatedChecklists = state.checklists.map((c) => {
-          if (c.id === id) {
-            targetTaskId = c.taskId;
-            return { ...c, completed: !c.completed };
-          }
-          return c;
-        });
-
-        if (targetTaskId) {
-          const taskItems = updatedChecklists.filter((c) => c.taskId === targetTaskId);
-          allCompletedNow = taskItems.length > 0 && taskItems.every((c) => c.completed);
-        }
-
-        set({ checklists: updatedChecklists });
-
-        // If all items completed and task is not yet done, prompt to mark as DONE
-        if (targetTaskId && allCompletedNow) {
-          const task = state.tasks.find((t) => t.id === targetTaskId);
-          if (task && task.status !== 'DONE') {
-            set({ completionPromptTaskId: targetTaskId });
-          }
-        }
-      },
-
-      deleteChecklistItem: (id) => {
+      bulkSetStatus: (taskIds, status) => {
+        const now = new Date().toISOString();
+        const setIds = new Set(taskIds);
         set((state) => ({
-          checklists: state.checklists.filter((c) => c.id !== id),
+          tasks: state.tasks.map((t) => (setIds.has(t.id) ? { ...t, status, updatedAt: now } : t)),
+          selectedRowIds: [],
         }));
       },
 
-      updateChecklistItem: (id, text) => {
+      bulkSetPriority: (taskIds, priority) => {
+        const now = new Date().toISOString();
+        const setIds = new Set(taskIds);
         set((state) => ({
-          checklists: state.checklists.map((c) => (c.id === id ? { ...c, text } : c)),
+          tasks: state.tasks.map((t) => (setIds.has(t.id) ? { ...t, priority, updatedAt: now } : t)),
+          selectedRowIds: [],
+        }));
+      },
+
+      bulkAssignOwner: (taskIds, personId, roleId) => {
+        const now = new Date().toISOString();
+        const setIds = new Set(taskIds);
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            setIds.has(t.id)
+              ? {
+                  ...t,
+                  ownerPersonId: personId,
+                  ownerRoleId: roleId,
+                  // Remove this person from collaborators if they were in it
+                  collaborators: (t.collaborators || []).filter((c) => c.personId !== personId),
+                  updatedAt: now,
+                }
+              : t
+          ),
+          selectedRowIds: [],
+        }));
+      },
+
+      bulkAddCollaborator: (taskIds, collaborator) => {
+        const now = new Date().toISOString();
+        const setIds = new Set(taskIds);
+        set((state) => ({
+          tasks: state.tasks.map((t) => {
+            if (!setIds.has(t.id)) return t;
+            // Check if already owner or collaborator
+            if (t.ownerPersonId === collaborator.personId) return t;
+            const existingCollabs = (t.collaborators || []).filter(
+              (c) => c.personId !== collaborator.personId
+            );
+            return {
+              ...t,
+              collaborators: [...existingCollabs, collaborator],
+              updatedAt: now,
+            };
+          }),
+          selectedRowIds: [],
+        }));
+      },
+
+      bulkDeleteTasks: (taskIds) => {
+        const setIds = new Set(taskIds);
+        set((state) => ({
+          tasks: state.tasks.filter((t) => !setIds.has(t.id)),
+          taskLinks: state.taskLinks.filter(
+            (l) => !setIds.has(l.sourceTaskId) && !setIds.has(l.targetTaskId)
+          ),
+          selectedRowIds: [],
+          selectedTaskId: state.selectedTaskId && setIds.has(state.selectedTaskId) ? null : state.selectedTaskId,
         }));
       },
 
@@ -380,8 +422,8 @@ export const useAppStore = create<AppStoreState>()(
 
       setPrimaryPerson: (roleId, personId) => {
         const now = new Date().toISOString();
-        set((state) => ({
-          people: state.people.map((p) => {
+        set((state) => {
+          const updatedPeople = state.people.map((p) => {
             if (p.roleId === roleId) {
               return {
                 ...p,
@@ -390,14 +432,17 @@ export const useAppStore = create<AppStoreState>()(
               };
             }
             return p;
-          }),
-        }));
+          });
+
+          // Primary Person is the default suggestion for future task assignments.
+          // DO NOT modify ownerPersonId or collaborator assignments of existing tasks.
+          return { people: updatedPeople };
+        });
       },
 
       updateSettings: (updates) => {
         set((state) => {
           const newSettings = { ...state.settings, ...updates };
-          // Apply theme to document
           if (updates.theme) {
             const isDark =
               updates.theme === 'dark' ||
@@ -411,7 +456,6 @@ export const useAppStore = create<AppStoreState>()(
       completeOnboarding: (projectName, teamName, names, connectSheetNow) => {
         const now = new Date().toISOString();
         set((state) => {
-          // Update primary person names for the 4 roles
           const updatedPeople = state.people.map((p) => {
             if (p.isPrimary && names[p.roleId]) {
               const fullName = names[p.roleId].trim();
@@ -445,12 +489,12 @@ export const useAppStore = create<AppStoreState>()(
           roles: INITIAL_ROLES,
           people: INITIAL_PEOPLE,
           tasks: INITIAL_TASKS,
-          checklists: INITIAL_CHECKLISTS,
           taskLinks: INITIAL_TASK_LINKS,
           settings: INITIAL_SETTINGS,
           selectedTaskId: null,
           selectedRoleId: null,
           perspectivePersonId: null,
+          selectedRowIds: [],
         });
       },
 
@@ -459,7 +503,6 @@ export const useAppStore = create<AppStoreState>()(
           roles: importedData.roles || state.roles,
           people: importedData.people || state.people,
           tasks: importedData.tasks || state.tasks,
-          checklists: importedData.checklists || state.checklists,
           taskLinks: importedData.taskLinks || state.taskLinks,
           settings: importedData.settings ? { ...state.settings, ...importedData.settings } : state.settings,
         }));
@@ -484,16 +527,95 @@ export const useAppStore = create<AppStoreState>()(
     }),
     {
       name: 'dbc-task-system-2026',
+      version: 3,
       storage: createJSONStorage(() => localStorage),
+      migrate: (persistedState: any, version: number) => {
+        let state = persistedState;
+        // Migration from V1 (or unversioned) to V2
+        if (version < 2 && state) {
+          const rawTasks: any[] = state.tasks || [];
+          const rawPeople: Person[] = state.people || INITIAL_PEOPLE;
+
+          // Helper to find primary person of a role
+          const getPrimaryPersonId = (roleId: RoleId): string => {
+            const p = rawPeople.find((person) => person.roleId === roleId && person.isPrimary);
+            return p ? p.id : `p-${roleId}`;
+          };
+
+          // Filter out the 82 old seed tasks
+          // Keep only user-created custom tasks (whose IDs are NOT in OLD_82_SEED_IDS and NOT in INITIAL_TASKS)
+          const customTasks = rawTasks
+            .filter((t) => !OLD_82_SEED_IDS.has(t.id) && !t.id.startsWith('CORE-'))
+            .map((t) => {
+              const ownerRoleId = t.ownerRoleId || 1;
+              const ownerPersonId = t.ownerPersonId || getPrimaryPersonId(ownerRoleId);
+
+              // Map collaborators
+              const collabs: TaskCollaborator[] = [];
+              if (Array.isArray(t.collaboratorRoleIds)) {
+                t.collaboratorRoleIds.forEach((cRoleId: RoleId) => {
+                  const cPersonId = getPrimaryPersonId(cRoleId);
+                  const resp = t.responsibilitiesByRole ? t.responsibilitiesByRole[cRoleId] : undefined;
+                  collabs.push({ personId: cPersonId, roleId: cRoleId, responsibility: resp });
+                });
+              } else if (Array.isArray(t.collaborators)) {
+                collabs.push(...t.collaborators);
+              }
+
+              return {
+                id: t.id,
+                title: t.title,
+                category: t.category || 'Khác',
+                ownerPersonId,
+                ownerRoleId,
+                collaborators: collabs,
+                approverPersonId: t.approverRoleId ? getPrimaryPersonId(t.approverRoleId) : undefined,
+                approverRoleId: t.approverRoleId,
+                status: t.status || 'NOT_STARTED',
+                priority: t.priority || 'MEDIUM',
+                dueAt: t.dueAt || t.dueDate || null,
+                output: t.output || (Array.isArray(t.outputs) ? t.outputs.join(', ') : '') || 'Chưa xác định',
+                note: t.note || t.notes || undefined,
+                customPosition: t.customPosition,
+                createdAt: t.createdAt || new Date().toISOString(),
+                updatedAt: t.updatedAt || new Date().toISOString(),
+              } as Task;
+            });
+
+          // Active tasks are INITIAL_TASKS (Core Tasks) + any preserved custom tasks
+          const migratedTasks: Task[] = [...INITIAL_TASKS, ...customTasks];
+
+          state = {
+            ...state,
+            tasks: migratedTasks,
+            taskLinks: INITIAL_TASK_LINKS,
+            checklists: undefined,
+          };
+        }
+
+        // Migration to V3: ensure CORE-21..23 are present
+        if (version < 3 && state) {
+          const currentTasks: Task[] = state.tasks || [];
+          const existingIds = new Set(currentTasks.map((t) => t.id));
+          const missingCoreTasks = INITIAL_TASKS.filter((t) => !existingIds.has(t.id));
+          state = {
+            ...state,
+            tasks: [...currentTasks, ...missingCoreTasks],
+          };
+        }
+
+        return state;
+      },
       partialize: (state) => ({
         roles: state.roles,
         people: state.people,
         tasks: state.tasks,
-        checklists: state.checklists,
         taskLinks: state.taskLinks,
         settings: state.settings,
         syncState: state.syncState,
         perspectivePersonId: state.perspectivePersonId,
+        drawerWidth: state.drawerWidth,
+        isDrawerMinimized: state.isDrawerMinimized,
       }),
     }
   )

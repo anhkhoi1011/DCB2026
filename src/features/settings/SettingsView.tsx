@@ -12,25 +12,27 @@ import {
   FileCode,
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
+import { useResolvedTheme } from '../../hooks/useResolvedTheme';
 
 export const SettingsView: React.FC = () => {
   const {
     settings,
-    updateSettings,
     roles,
     people,
     tasks,
-    checklists,
     taskLinks,
     resetToSeedData,
     importData,
     addSyncLog,
   } = useAppStore();
 
+  const { theme, setTheme } = useResolvedTheme();
+
   const [projectName, setProjectName] = useState(settings.projectName);
   const [teamName, setTeamName] = useState(settings.teamName);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const { updateSettings } = useAppStore();
 
   const handleSaveGeneral = (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,13 +46,12 @@ export const SettingsView: React.FC = () => {
 
   const handleExportJson = () => {
     const backupData = {
-      version: '1.0',
+      version: '3.0',
       exportedAt: new Date().toISOString(),
       settings,
       roles,
       people,
       tasks,
-      checklists,
       taskLinks,
     };
     const jsonStr = JSON.stringify(backupData, null, 2);
@@ -88,10 +89,10 @@ export const SettingsView: React.FC = () => {
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       <div>
         <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-          <SettingsIcon className="w-5 h-5 text-blue-600" />
+          <SettingsIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
           <span>Cài Đặt Hệ Thống &amp; Sao Lưu Dữ Liệu</span>
         </h1>
-        <p className="text-xs text-slate-500 mt-0.5">
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
           Quản lý thông tin đội thi, giao diện và sao lưu phục hồi dữ liệu
         </p>
       </div>
@@ -133,7 +134,7 @@ export const SettingsView: React.FC = () => {
 
         <div className="flex items-center justify-between pt-2">
           {saveSuccess ? (
-            <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
+            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
               <CheckCircle2 className="w-4 h-4" />
               <span>Đã lưu thành công!</span>
             </span>
@@ -142,7 +143,7 @@ export const SettingsView: React.FC = () => {
           )}
           <button
             type="submit"
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-xs transition"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-semibold rounded-xl shadow-xs transition cursor-pointer"
           >
             Lưu thay đổi
           </button>
@@ -154,47 +155,47 @@ export const SettingsView: React.FC = () => {
         <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
           Chế độ giao diện (Theme)
         </h3>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           Tùy chỉnh tông màu hiển thị theo sở thích hoặc theo cài đặt hệ điều hành
         </p>
 
         <div className="grid grid-cols-3 gap-3 pt-1">
           <button
             type="button"
-            onClick={() => updateSettings({ theme: 'light' })}
-            className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-semibold transition ${
-              settings.theme === 'light'
-                ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 shadow-xs'
-                : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
+            onClick={() => setTheme('light')}
+            className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-semibold transition cursor-pointer ${
+              theme === 'light'
+                ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 shadow-xs ring-2 ring-blue-500/20'
+                : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60'
             }`}
           >
-            <Sun className="w-4 h-4" />
+            <Sun className="w-4 h-4 text-amber-500" />
             <span>Sáng (Light)</span>
           </button>
 
           <button
             type="button"
-            onClick={() => updateSettings({ theme: 'dark' })}
-            className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-semibold transition ${
-              settings.theme === 'dark'
-                ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 shadow-xs'
-                : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
+            onClick={() => setTheme('dark')}
+            className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-semibold transition cursor-pointer ${
+              theme === 'dark'
+                ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 shadow-xs ring-2 ring-blue-500/20'
+                : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60'
             }`}
           >
-            <Moon className="w-4 h-4" />
+            <Moon className="w-4 h-4 text-blue-400" />
             <span>Tối (Dark)</span>
           </button>
 
           <button
             type="button"
-            onClick={() => updateSettings({ theme: 'system' })}
-            className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-semibold transition ${
-              settings.theme === 'system'
-                ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 shadow-xs'
-                : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
+            onClick={() => setTheme('system')}
+            className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-semibold transition cursor-pointer ${
+              theme === 'system'
+                ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 shadow-xs ring-2 ring-blue-500/20'
+                : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60'
             }`}
           >
-            <Laptop className="w-4 h-4" />
+            <Laptop className="w-4 h-4 text-slate-400" />
             <span>Hệ thống (System)</span>
           </button>
         </div>
@@ -205,23 +206,23 @@ export const SettingsView: React.FC = () => {
         <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
           Sao Lưu &amp; Khôi Phục File JSON
         </h3>
-        <p className="text-xs text-slate-500">
-          Xuất toàn bộ cơ sở dữ liệu nội bộ (vai trò, thành viên, công việc, checklist, liên kết) để lưu trữ an toàn hoặc chuyển máy
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Xuất toàn bộ cơ sở dữ liệu nội bộ (vai trò, thành viên, công việc, liên kết) để lưu trữ an toàn hoặc chuyển máy
         </p>
 
         <div className="flex flex-wrap gap-3 pt-1">
           <button
             type="button"
             onClick={handleExportJson}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-xl transition"
+            className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-xl transition cursor-pointer"
           >
             <Download className="w-4 h-4" />
             <span>Xuất file JSON sao lưu</span>
           </button>
 
-          <label className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-xl transition cursor-pointer">
+          <label className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-xl transition cursor-pointer">
             <Upload className="w-4 h-4" />
-            <span>Nhập dữ liệu từ file JSON</span>
+            <span>Nhập từ file JSON sao lưu</span>
             <input
               type="file"
               accept=".json"
@@ -232,43 +233,47 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Reset Seed Data */}
-      <div className="p-5 rounded-2xl bg-rose-50/40 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/60 shadow-xs space-y-3">
-        <h3 className="text-sm font-bold text-rose-800 dark:text-rose-300 flex items-center gap-1.5">
-          <AlertTriangle className="w-4 h-4 text-rose-600" />
-          <span>Khôi Phục Dữ Liệu Mẫu Ban Đầu</span>
+      {/* Reset to Seed Data */}
+      <div className="p-5 rounded-2xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/50 space-y-3">
+        <h3 className="text-sm font-bold text-rose-800 dark:text-rose-300 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+          <span>Vùng Nguy Hiểm: Khôi Phục Dữ Liệu Gốc</span>
         </h3>
-        <p className="text-xs text-rose-700/80 dark:text-rose-400">
-          Tùy chọn này sẽ đặt lại toàn bộ hệ thống về bộ 58 công việc mẫu tiêu chuẩn DBC 2026 và 4 thành viên ban đầu.
+        <p className="text-xs text-rose-700 dark:text-rose-400/90">
+          Hành động này sẽ xóa toàn bộ các thay đổi cục bộ và tải lại 23 công việc cốt lõi chuẩn DBC 2026.
         </p>
 
-        {showResetConfirm ? (
-          <div className="flex items-center gap-2 pt-1">
+        {!showResetConfirm ? (
+          <button
+            type="button"
+            onClick={() => setShowResetConfirm(true)}
+            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl transition cursor-pointer shadow-xs"
+          >
+            Khôi phục dữ liệu ban đầu
+          </button>
+        ) : (
+          <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-3 rounded-xl border border-rose-300 dark:border-rose-800 max-w-md">
+            <span className="text-xs text-rose-700 dark:text-rose-300 font-medium flex-1">
+              Bạn có chắc chắn muốn xóa toàn bộ và đặt lại?
+            </span>
             <button
+              type="button"
               onClick={() => {
                 resetToSeedData();
                 setShowResetConfirm(false);
-                addSyncLog('info', 'Đã khôi phục toàn bộ dữ liệu mẫu ban đầu.');
               }}
-              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs"
+              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg transition cursor-pointer"
             >
-              Chắc chắn khôi phục
+              Đồng ý Đặt lại
             </button>
             <button
+              type="button"
               onClick={() => setShowResetConfirm(false)}
-              className="px-3 py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl"
+              className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
             >
               Hủy
             </button>
           </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setShowResetConfirm(true)}
-            className="px-4 py-2 bg-rose-100 dark:bg-rose-900/60 hover:bg-rose-200 text-rose-800 dark:text-rose-300 text-xs font-semibold rounded-xl transition"
-          >
-            Khôi phục dữ liệu mẫu DBC 2026
-          </button>
         )}
       </div>
     </div>

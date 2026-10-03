@@ -2,5 +2,7 @@
   "name": "DBC 2026 — Bản Đồ Công Việc & Phối Hợp",
   "description": "Hệ thống quản lý công việc và quan hệ phối hợp tương tác cho nhóm sinh viên kinh doanh số 2026.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

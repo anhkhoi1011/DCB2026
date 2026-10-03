@@ -52,25 +52,30 @@ export const MapLegend: React.FC = () => {
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
                 Đường quan hệ công việc
               </div>
-              <div className="space-y-1 text-[11px] text-slate-600 dark:text-slate-300">
+              <div className="space-y-1.5 text-[11px] text-slate-600 dark:text-slate-300">
                 <div className="flex items-center gap-2">
-                  <div className="w-6 h-0.5 bg-blue-600 rounded" />
+                  <div className="w-6 h-[3px] bg-blue-600 rounded" />
+                  <span className="text-blue-600 dark:text-blue-400 font-medium">→</span>
                   <span>Cầm chính (Chịu trách nhiệm hoàn thành)</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-6 border-t-2 border-dashed border-slate-400" />
+                  <span className="text-slate-400 font-medium">→</span>
                   <span>Phối hợp (Trực tiếp thực hiện 1 phần)</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-6 border-t-2 border-dotted border-purple-500" />
+                  <div className="w-6 h-[2px] bg-amber-500 rounded" />
+                  <span className="text-amber-500 font-medium">→</span>
                   <span>Người chốt (Phê duyệt kết quả)</span>
                 </div>
                 <div className="flex items-center gap-2">
+                  <div className="w-6 h-[2px] bg-slate-500 rounded" />
                   <span className="text-slate-500 font-bold">→</span>
                   <span>Bàn giao kết quả / Phụ thuộc trước - sau</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-pink-500 font-bold">↺</span>
+                  <div className="w-6 border-t-2 border-dashed border-emerald-500" />
+                  <span className="text-emerald-500 font-bold">↺</span>
                   <span>Phản hồi &amp; Tối ưu lặp (Feedback loop)</span>
                 </div>
               </div>

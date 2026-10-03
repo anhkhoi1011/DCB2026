@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @import "@xyflow/react/dist/style.css";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
 @layer base {
   * {
     border-color: var(--border, #e2e8f0);
@@ -30,4 +38,28 @@
 
 .react-flow__handle:hover {
   transform: scale(1.3) !important;
+}
+
+/* React Flow Controls & MiniMap dark mode styling */
+.dark .react-flow__controls {
+  background-color: #0f172a !important;
+  border-color: #334155 !important;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3) !important;
+}
+
+.dark .react-flow__controls-button {
+  background-color: #0f172a !important;
+  border-bottom-color: #334155 !important;
+  color: #94a3b8 !important;
+  fill: #94a3b8 !important;
+}
+
+.dark .react-flow__controls-button:hover {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+  fill: #f1f5f9 !important;
+}
+
+.dark .react-flow__controls-button svg {
+  fill: currentColor !important;
 }

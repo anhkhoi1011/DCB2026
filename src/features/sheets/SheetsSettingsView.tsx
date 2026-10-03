@@ -31,7 +31,6 @@ export const SheetsSettingsView: React.FC = () => {
     roles,
     people,
     tasks,
-    checklists,
     taskLinks,
     settings,
     importData,
@@ -117,7 +116,7 @@ export const SheetsSettingsView: React.FC = () => {
       updateSyncState({ isSyncing: true });
       await setupSpreadsheetStructure(spreadsheetId, accessToken);
       setMissingSheets([]);
-      setStructureStatus('✓ Đã tạo tự động đầy đủ 7 tab và tiêu đề cột chuẩn xác trên Google Sheet!');
+      setStructureStatus('✓ Đã tạo tự động đầy đủ 6 tab và tiêu đề cột chuẩn xác trên Google Sheet!');
       updateSyncState({ isSyncing: false });
       addSyncLog('success', 'Khởi tạo cấu trúc bảng tính thành công!');
     } catch (err: any) {
@@ -140,7 +139,6 @@ export const SheetsSettingsView: React.FC = () => {
         roles,
         people,
         tasks,
-        checklists,
         taskLinks,
         settings,
       });
@@ -200,7 +198,7 @@ export const SheetsSettingsView: React.FC = () => {
           <span>Tích Hợp Google Sheets Đồng Bộ Hai Chiều</span>
         </h1>
         <p className="text-xs text-slate-500 mt-0.5">
-          Đồng bộ công việc, phân công vai trò và checklist trực tiếp với Google Sheets của nhóm
+          Đồng bộ công việc và phân công vai trò trực tiếp với Google Sheets của nhóm
         </p>
       </div>
 
@@ -412,25 +410,49 @@ export const SheetsSettingsView: React.FC = () => {
 
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                Phát hiện hai nguồn dữ liệu
+                Xung Đột Dữ Liệu: Phát hiện hai nguồn dữ liệu
               </h3>
               <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
-                Trên Web hiện đang có {tasks.length} công việc và trên Google Sheets cũng có dữ liệu. Bạn muốn giữ dữ liệu nào?
+                Trên Web hiện đang có {tasks.length} công việc và trên Google Sheets có {pulledDataStaging?.tasks?.length || 0} công việc. Vui lòng đối chiếu thời gian cập nhật <code>updated_at</code>:
               </p>
+
+              <div className="mt-3 p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 text-xs space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">Phiên bản Web:</span>
+                  <span className="font-mono text-slate-600 dark:text-slate-400">
+                    {(() => {
+                      const latest = tasks.reduce((max, t) => (t.updatedAt && t.updatedAt > max ? t.updatedAt : max), '');
+                      return latest ? new Date(latest).toLocaleString('vi-VN') : 'Vừa xong';
+                    })()}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">Phiên bản Google Sheets:</span>
+                  <span className="font-mono text-slate-600 dark:text-slate-400">
+                    {(() => {
+                      const latest = (pulledDataStaging?.tasks || []).reduce(
+                        (max: string, t: any) => (t.updatedAt && t.updatedAt > max ? t.updatedAt : max),
+                        ''
+                      );
+                      return latest ? new Date(latest).toLocaleString('vi-VN') : 'Mới cập nhật';
+                    })()}
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => handleResolveConflict('WEB')}
-                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-lg"
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-lg transition"
               >
-                Giữ dữ liệu Web
+                Giữ Web (Ghi đè Sheet sau)
               </button>
               <button
                 onClick={() => handleResolveConflict('SHEET')}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-sm"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-sm transition"
               >
-                Dùng dữ liệu Sheet
+                Giữ Sheet (Cập nhật Web)
               </button>
             </div>
           </div>

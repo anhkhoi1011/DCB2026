@@ -1,15 +1,13 @@
-import { Role, Person, Task, ChecklistItem, TaskLink, AppSettings } from '../types';
+import { Role, Person, Task, TaskLink, AppSettings } from '../types';
 
 export function parseSpreadsheetId(input: string): string | null {
   if (!input || !input.trim()) return null;
   const trimmed = input.trim();
   
-  // Direct ID check (typically 44 chars alphanumeric with underscores/hyphens)
   if (/^[a-zA-Z0-9-_]{20,60}$/.test(trimmed)) {
     return trimmed;
   }
   
-  // URL matching
   const match = trimmed.match(/\/d\/([a-zA-Z0-9-_]+)/);
   if (match && match[1]) {
     return match[1];
@@ -18,12 +16,12 @@ export function parseSpreadsheetId(input: string): string | null {
   return null;
 }
 
+// 6 active tabs in V2 (CHECKLIST is removed)
 const REQUIRED_SHEETS = [
   'ROLES',
   'PEOPLE',
   'TASKS',
   'TASK_PARTICIPANTS',
-  'CHECKLIST',
   'TASK_LINKS',
   'SETTINGS',
 ];
@@ -32,17 +30,15 @@ const SHEET_HEADERS: Record<string, string[]> = {
   ROLES: ['role_id', 'role_code', 'role_name', 'color', 'sort_order', 'active'],
   PEOPLE: ['person_id', 'full_name', 'short_name', 'role_id', 'avatar_url', 'is_primary', 'active', 'created_at', 'updated_at'],
   TASKS: [
-    'task_id', 'title', 'category', 'owner_role_id', 'approver_role_id', 'status',
-    'priority', 'description', 'how_to', 'definition_of_done', 'start_date', 'due_date',
-    'progress', 'notes', 'created_at', 'updated_at', 'updated_by'
+    'task_id', 'title', 'category', 'owner_person_id', 'owner_role_id',
+    'approver_person_id', 'approver_role_id', 'status', 'priority',
+    'due_at', 'output', 'note', 'created_at', 'updated_at'
   ],
-  TASK_PARTICIPANTS: ['id', 'task_id', 'role_id', 'relation_type', 'responsibility'],
-  CHECKLIST: ['checklist_id', 'task_id', 'text', 'assignee_role_id', 'status', 'sort_order', 'created_at', 'updated_at'],
+  TASK_PARTICIPANTS: ['id', 'task_id', 'person_id', 'role_id', 'relation_type', 'responsibility'],
   TASK_LINKS: ['link_id', 'source_task_id', 'target_task_id', 'link_type', 'label'],
   SETTINGS: ['key', 'value'],
 };
 
-// Requests an access token via Google Identity Services
 export function requestGoogleAccessToken(clientId: string): Promise<string> {
   return new Promise((resolve, reject) => {
     if (typeof window === 'undefined' || !(window as any).google?.accounts?.oauth2) {
@@ -74,7 +70,6 @@ export function requestGoogleAccessToken(clientId: string): Promise<string> {
   });
 }
 
-// Fetch spreadsheet metadata to check which sheets exist
 export async function getSpreadsheetMetadata(spreadsheetId: string, accessToken: string) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`;
   const res = await fetch(url, {
@@ -93,15 +88,14 @@ export async function getSpreadsheetMetadata(spreadsheetId: string, accessToken:
   return {
     existingSheetTitles,
     missingSheets: REQUIRED_SHEETS.filter((title) => !existingSheetTitles.includes(title)),
+    hasLegacyChecklist: existingSheetTitles.includes('CHECKLIST'),
   };
 }
 
-// Automatically create missing sheets and initialize headers
 export async function setupSpreadsheetStructure(spreadsheetId: string, accessToken: string) {
-  const { missingSheets, existingSheetTitles } = await getSpreadsheetMetadata(spreadsheetId, accessToken);
+  const { missingSheets } = await getSpreadsheetMetadata(spreadsheetId, accessToken);
 
   if (missingSheets.length > 0) {
-    // Add missing sheets via batchUpdate
     const requests = missingSheets.map((title) => ({
       addSheet: {
         properties: {
@@ -125,7 +119,6 @@ export async function setupSpreadsheetStructure(spreadsheetId: string, accessTok
     }
   }
 
-  // Populate headers for each required sheet
   const valueRanges = REQUIRED_SHEETS.map((sheetName) => ({
     range: `${sheetName}!A1:Z1`,
     values: [SHEET_HEADERS[sheetName]],
@@ -154,7 +147,6 @@ export async function setupSpreadsheetStructure(spreadsheetId: string, accessTok
   return true;
 }
 
-// Push all state data into Google Sheets
 export async function exportDataToSpreadsheet(
   spreadsheetId: string,
   accessToken: string,
@@ -162,12 +154,11 @@ export async function exportDataToSpreadsheet(
     roles: Role[];
     people: Person[];
     tasks: Task[];
-    checklists: ChecklistItem[];
     taskLinks: TaskLink[];
     settings: AppSettings;
   }
 ) {
-  // Clear old data rows first (A2:Z1000) for all sheets
+  // Clear old data rows for the 6 required sheets
   const clearPromises = REQUIRED_SHEETS.map((sheet) =>
     fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheet}!A2:Z1000:clear`, {
       method: 'POST',
@@ -176,7 +167,7 @@ export async function exportDataToSpreadsheet(
   );
   await Promise.all(clearPromises);
 
-  // Prepare rows for ROLES
+  // 1. ROLES
   const roleRows = data.roles.map((r) => [
     r.id,
     r.code,
@@ -186,7 +177,7 @@ export async function exportDataToSpreadsheet(
     r.active ? 'TRUE' : 'FALSE',
   ]);
 
-  // Prepare rows for PEOPLE
+  // 2. PEOPLE
   const peopleRows = data.people.map((p) => [
     p.id,
     p.fullName,
@@ -199,73 +190,61 @@ export async function exportDataToSpreadsheet(
     p.updatedAt,
   ]);
 
-  // Prepare rows for TASKS
+  // 3. TASKS
   const taskRows = data.tasks.map((t) => [
     t.id,
     t.title,
-    t.category,
+    t.category || '',
+    t.ownerPersonId,
     t.ownerRoleId,
+    t.approverPersonId || '',
     t.approverRoleId || '',
     t.status,
-    t.priority,
-    t.description,
-    t.howTo || '',
-    t.definitionOfDone || '',
-    t.startDate || '',
-    t.dueDate || '',
-    t.manualProgress || 0,
-    t.notes || '',
+    t.priority || 'MEDIUM',
+    t.dueAt || '',
+    t.output,
+    t.note || '',
     t.createdAt,
     t.updatedAt,
-    t.updatedBy || '',
   ]);
 
-  // Prepare rows for TASK_PARTICIPANTS
+  // 4. TASK_PARTICIPANTS
   const participantRows: any[] = [];
   data.tasks.forEach((t) => {
     // Owner
     participantRows.push([
       `part-${t.id}-owner`,
       t.id,
+      t.ownerPersonId,
       t.ownerRoleId,
       'OWNER',
-      t.responsibilitiesByRole[t.ownerRoleId] || '',
+      'Cầm chính nhiệm vụ',
     ]);
     // Collaborators
-    (t.collaboratorRoleIds || []).forEach((cRole) => {
+    (t.collaborators || []).forEach((c) => {
       participantRows.push([
-        `part-${t.id}-collab-${cRole}`,
+        `part-${t.id}-collab-${c.personId}`,
         t.id,
-        cRole,
+        c.personId,
+        c.roleId,
         'COLLABORATOR',
-        t.responsibilitiesByRole[cRole] || '',
+        c.responsibility || '',
       ]);
     });
-    // Approver if distinct
-    if (t.approverRoleId && t.approverRoleId !== t.ownerRoleId && !(t.collaboratorRoleIds || []).includes(t.approverRoleId)) {
+    // Approver if specified
+    if (t.approverPersonId && t.approverRoleId && t.approverPersonId !== t.ownerPersonId) {
       participantRows.push([
-        `part-${t.id}-approver-${t.approverRoleId}`,
+        `part-${t.id}-approver-${t.approverPersonId}`,
         t.id,
+        t.approverPersonId,
         t.approverRoleId,
         'APPROVER',
-        t.responsibilitiesByRole[t.approverRoleId] || '',
+        'Phê duyệt kết quả',
       ]);
     }
   });
 
-  // Prepare rows for CHECKLIST
-  const checklistRows = data.checklists.map((c) => [
-    c.id,
-    c.taskId,
-    c.text,
-    c.assigneeRoleId || '',
-    c.completed ? 'DONE' : 'NOT_DONE',
-    c.sortOrder,
-    new Date().toISOString(),
-    new Date().toISOString(),
-  ]);
-
-  // Prepare rows for TASK_LINKS
+  // 5. TASK_LINKS
   const linkRows = data.taskLinks.map((l) => [
     l.id,
     l.sourceTaskId,
@@ -274,7 +253,7 @@ export async function exportDataToSpreadsheet(
     l.label || '',
   ]);
 
-  // Prepare rows for SETTINGS
+  // 6. SETTINGS
   const settingRows = [
     ['projectName', data.settings.projectName],
     ['teamName', data.settings.teamName],
@@ -286,7 +265,6 @@ export async function exportDataToSpreadsheet(
     { range: 'PEOPLE!A2', values: peopleRows },
     { range: 'TASKS!A2', values: taskRows },
     { range: 'TASK_PARTICIPANTS!A2', values: participantRows },
-    { range: 'CHECKLIST!A2', values: checklistRows },
     { range: 'TASK_LINKS!A2', values: linkRows },
     { range: 'SETTINGS!A2', values: settingRows },
   ].filter((item) => item.values.length > 0);
@@ -311,7 +289,6 @@ export async function exportDataToSpreadsheet(
   return true;
 }
 
-// Pull data from Google Sheets into local state
 export async function importDataFromSpreadsheet(spreadsheetId: string, accessToken: string) {
   const ranges = REQUIRED_SHEETS.map((sheet) => `${sheet}!A2:Z1000`);
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchGet?${ranges
@@ -333,11 +310,13 @@ export async function importDataFromSpreadsheet(spreadsheetId: string, accessTok
   const valueRanges: any[] = data.valueRanges || [];
 
   const getSheetValues = (sheetName: string): any[][] => {
-    const found = valueRanges.find((vr) => vr.range && vr.range.startsWith(`'${sheetName}'`) || vr.range.startsWith(`${sheetName}!`));
+    const found = valueRanges.find(
+      (vr) => (vr.range && vr.range.startsWith(`'${sheetName}'`)) || (vr.range && vr.range.startsWith(`${sheetName}!`))
+    );
     return found?.values || [];
   };
 
-  // Parse ROLES
+  // 1. ROLES
   const roleRows = getSheetValues('ROLES');
   const roles: Role[] = roleRows
     .filter((r) => r[0])
@@ -356,7 +335,7 @@ export async function importDataFromSpreadsheet(spreadsheetId: string, accessTok
       active: r[5] === 'TRUE',
     }));
 
-  // Parse PEOPLE
+  // 2. PEOPLE
   const peopleRows = getSheetValues('PEOPLE');
   const people: Person[] = peopleRows
     .filter((p) => p[0])
@@ -372,75 +351,58 @@ export async function importDataFromSpreadsheet(spreadsheetId: string, accessTok
       updatedAt: p[8] || new Date().toISOString(),
     }));
 
-  // Parse TASK_PARTICIPANTS
+  // 3. TASK_PARTICIPANTS
   const partRows = getSheetValues('TASK_PARTICIPANTS');
-  const taskPartMap: Record<string, { collabs: number[]; approver?: number; responsibilities: Record<number, string> }> = {};
+  const taskPartMap: Record<string, { collabs: Array<{ personId: string; roleId: any; responsibility?: string }>; approverPersonId?: string; approverRoleId?: any }> = {};
   partRows.forEach((row) => {
     const taskId = row[1];
-    const roleId = Number(row[2]);
-    const relationType = row[3];
-    const resp = row[4];
+    const personId = row[2];
+    const roleId = Number(row[3]);
+    const relationType = row[4];
+    const responsibility = row[5];
     if (!taskId || !roleId) return;
+
     if (!taskPartMap[taskId]) {
-      taskPartMap[taskId] = { collabs: [], responsibilities: {} };
+      taskPartMap[taskId] = { collabs: [] };
     }
-    if (resp) taskPartMap[taskId].responsibilities[roleId] = resp;
+
     if (relationType === 'COLLABORATOR') {
-      taskPartMap[taskId].collabs.push(roleId);
+      taskPartMap[taskId].collabs.push({ personId, roleId, responsibility });
     } else if (relationType === 'APPROVER') {
-      taskPartMap[taskId].approver = roleId;
+      taskPartMap[taskId].approverPersonId = personId;
+      taskPartMap[taskId].approverRoleId = roleId;
     }
   });
 
-  // Parse TASKS
+  // 4. TASKS
   const taskRows = getSheetValues('TASKS');
   const tasks: Task[] = taskRows
     .filter((t) => t[0])
     .map((t) => {
       const taskId = t[0];
-      const ownerRoleId = Number(t[3]) as any;
-      const partInfo = taskPartMap[taskId] || { collabs: [], responsibilities: {} };
-      const collaboratorRoleIds = partInfo.collabs as any;
-      const participantRoleIds = Array.from(new Set([ownerRoleId, ...collaboratorRoleIds])) as any;
+      const ownerRoleId = Number(t[4]) as any;
+      const partInfo = taskPartMap[taskId] || { collabs: [] };
 
       return {
         id: taskId,
         title: t[1] || 'Công việc không tên',
-        category: (t[2] as any) || 'Kế hoạch',
+        category: t[2] || undefined,
+        ownerPersonId: t[3] || `p-${ownerRoleId}`,
         ownerRoleId,
-        approverRoleId: t[4] ? (Number(t[4]) as any) : partInfo.approver as any,
-        collaboratorRoleIds,
-        participantRoleIds,
-        status: (t[5] as any) || 'NOT_STARTED',
-        priority: (t[6] as any) || 'MEDIUM',
-        description: t[7] || '',
-        howTo: t[8] || undefined,
-        definitionOfDone: t[9] || undefined,
-        startDate: t[10] || undefined,
-        dueDate: t[11] || undefined,
-        manualProgress: Number(t[12]) || 0,
-        notes: t[13] || undefined,
-        responsibilitiesByRole: partInfo.responsibilities as any,
-        createdAt: t[14] || new Date().toISOString(),
-        updatedAt: t[15] || new Date().toISOString(),
-        updatedBy: t[16] || undefined,
+        approverPersonId: t[5] || partInfo.approverPersonId,
+        approverRoleId: t[6] ? (Number(t[6]) as any) : partInfo.approverRoleId,
+        collaborators: partInfo.collabs,
+        status: (t[7] as any) || 'NOT_STARTED',
+        priority: (t[8] as any) || 'MEDIUM',
+        dueAt: t[9] || null,
+        output: t[10] || '',
+        note: t[11] || undefined,
+        createdAt: t[12] || new Date().toISOString(),
+        updatedAt: t[13] || new Date().toISOString(),
       };
     });
 
-  // Parse CHECKLIST
-  const checkRows = getSheetValues('CHECKLIST');
-  const checklists: ChecklistItem[] = checkRows
-    .filter((c) => c[0])
-    .map((c) => ({
-      id: c[0],
-      taskId: c[1],
-      text: c[2] || '',
-      assigneeRoleId: c[3] ? (Number(c[3]) as any) : undefined,
-      completed: c[4] === 'DONE' || c[4] === 'TRUE',
-      sortOrder: Number(c[5]) || 1,
-    }));
-
-  // Parse TASK_LINKS
+  // 5. TASK_LINKS
   const linkRows = getSheetValues('TASK_LINKS');
   const taskLinks: TaskLink[] = linkRows
     .filter((l) => l[0])
@@ -456,7 +418,6 @@ export async function importDataFromSpreadsheet(spreadsheetId: string, accessTok
     roles: roles.length > 0 ? roles : undefined,
     people: people.length > 0 ? people : undefined,
     tasks: tasks.length > 0 ? tasks : undefined,
-    checklists: checklists.length > 0 ? checklists : undefined,
     taskLinks: taskLinks.length > 0 ? taskLinks : undefined,
   };
 }

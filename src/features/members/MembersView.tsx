@@ -88,7 +88,7 @@ export const MembersView: React.FC = () => {
           const supportPeople = rolePeople.filter((p) => !p.isPrimary);
 
           const ownerTasks = tasks.filter((t) => t.ownerRoleId === role.id);
-          const collabTasks = tasks.filter((t) => (t.collaboratorRoleIds || []).includes(role.id));
+          const collabTasks = tasks.filter((t) => (t.collaborators || []).some((c) => c.roleId === role.id));
 
           const roleColors: Record<RoleId, { cardBorder: string; headerBg: string; textBadge: string; dot: string }> = {
             1: {

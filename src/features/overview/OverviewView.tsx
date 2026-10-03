@@ -2,14 +2,14 @@ import React from 'react';
 import {
   CheckCircle2,
   Clock,
-  AlertTriangle,
   AlertCircle,
   TrendingUp,
-  Layers,
   ArrowRight,
   Calendar,
+  AlertTriangle,
+  PauseCircle,
 } from 'lucide-react';
-import { useAppStore, getTaskProgress } from '../../store/useAppStore';
+import { useAppStore } from '../../store/useAppStore';
 import { RoleBadge, StatusBadge, PriorityBadge } from '../../components/common/Badges';
 import { RoleId } from '../../types';
 
@@ -18,12 +18,10 @@ export const OverviewView: React.FC = () => {
     tasks,
     roles,
     people,
-    checklists,
     taskLinks,
     setSelectedTaskId,
     setSelectedRoleId,
     setActiveTab,
-    openTaskForm,
   } = useAppStore();
 
   const totalTasks = tasks.length;
@@ -31,27 +29,23 @@ export const OverviewView: React.FC = () => {
   const inProgressTasks = tasks.filter((t) => t.status === 'IN_PROGRESS').length;
   const doneTasks = tasks.filter((t) => t.status === 'DONE').length;
   const blockedTasks = tasks.filter((t) => t.status === 'BLOCKED').length;
+  const onHoldTasks = tasks.filter((t) => t.status === 'ON_HOLD').length;
 
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // Overdue: dueDate < today and not DONE
-  const overdueTasks = tasks.filter((t) => t.dueDate && t.dueDate < todayStr && t.status !== 'DONE');
+  // Overdue: dueAt < today and not DONE
+  const overdueTasks = tasks.filter((t) => t.dueAt && t.dueAt < todayStr && t.status !== 'DONE');
 
   // Due Soon: within next 3 days and not DONE
   const threeDaysLater = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const dueSoonTasks = tasks.filter(
-    (t) => t.dueDate && t.dueDate >= todayStr && t.dueDate <= threeDaysLater && t.status !== 'DONE'
+    (t) => t.dueAt && t.dueAt >= todayStr && t.dueAt <= threeDaysLater && t.status !== 'DONE'
   );
 
-  // Overall Team Progress
-  const teamOverallProgress =
-    totalTasks > 0
-      ? Math.round(
-          tasks.reduce((acc, t) => acc + getTaskProgress(t, checklists), 0) / totalTasks
-        )
-      : 0;
+  // Overall Completion Rate: (doneActiveTasks / totalActiveTasks) * 100
+  const completionRate = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
-  // Waiting on someone else (Tasks blocked by incomplete dependencies)
+  // Waiting on someone else (Tasks with incomplete incoming dependencies)
   const waitingTasks = tasks.filter((t) => {
     if (t.status === 'DONE') return false;
     const incoming = taskLinks.filter((l) => l.targetTaskId === t.id);
@@ -70,22 +64,28 @@ export const OverviewView: React.FC = () => {
             Tổng Quan Chiến Dịch Bán Hàng DBC 2026
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Theo dõi tiến độ toàn đội, trách nhiệm 4 vai trò và các công việc cần chú ý
+            Theo dõi trạng thái các công việc trọng tâm, deadline và output cần bàn giao
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setActiveTab('tasks')}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-xl transition"
+          >
+            <span>Danh sách công việc</span>
+          </button>
           <button
             onClick={() => setActiveTab('map')}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-700 dark:text-blue-300 text-xs font-semibold rounded-xl border border-blue-200 dark:border-blue-800 transition"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-xs transition"
           >
-            <span>Mở Bản đồ quan hệ</span>
+            <span>Bản đồ quan hệ</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {/* KPI Stats Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* KPI Stats Grid - 7 cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         {/* Total Tasks */}
         <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
@@ -94,7 +94,7 @@ export const OverviewView: React.FC = () => {
           <div className="text-2xl font-bold text-slate-900 dark:text-slate-100 mt-1">
             {totalTasks}
           </div>
-          <div className="text-[10px] text-slate-400 mt-1">100% mục tiêu</div>
+          <div className="text-[10px] text-slate-400 mt-1">Công việc active</div>
         </div>
 
         {/* Not Started */}
@@ -107,7 +107,7 @@ export const OverviewView: React.FC = () => {
             {notStartedTasks}
           </div>
           <div className="text-[10px] text-slate-400 mt-1">
-            {Math.round((notStartedTasks / totalTasks) * 100 || 0)}% tổng số
+            {totalTasks > 0 ? Math.round((notStartedTasks / totalTasks) * 100) : 0}% tổng số
           </div>
         </div>
 
@@ -121,7 +121,7 @@ export const OverviewView: React.FC = () => {
             {inProgressTasks}
           </div>
           <div className="text-[10px] text-slate-400 mt-1">
-            {Math.round((inProgressTasks / totalTasks) * 100 || 0)}% đang chạy
+            {totalTasks > 0 ? Math.round((inProgressTasks / totalTasks) * 100) : 0}% đang chạy
           </div>
         </div>
 
@@ -135,7 +135,7 @@ export const OverviewView: React.FC = () => {
             {doneTasks}
           </div>
           <div className="text-[10px] text-slate-400 mt-1">
-            {Math.round((doneTasks / totalTasks) * 100 || 0)}% hoàn tất
+            {completionRate}% hoàn tất
           </div>
         </div>
 
@@ -151,6 +151,18 @@ export const OverviewView: React.FC = () => {
           <div className="text-[10px] text-slate-400 mt-1">Cần hỗ trợ gỡ</div>
         </div>
 
+        {/* On Hold */}
+        <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
+            <PauseCircle className="w-3.5 h-3.5 text-zinc-400" />
+            <span>Tạm dừng</span>
+          </div>
+          <div className="text-2xl font-bold text-zinc-600 dark:text-zinc-400 mt-1">
+            {onHoldTasks}
+          </div>
+          <div className="text-[10px] text-slate-400 mt-1">Tạm hoãn</div>
+        </div>
+
         {/* Overdue */}
         <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="text-[11px] font-semibold text-red-600 dark:text-red-400 flex items-center gap-1">
@@ -160,58 +172,52 @@ export const OverviewView: React.FC = () => {
           <div className="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">
             {overdueTasks.length}
           </div>
-          <div className="text-[10px] text-slate-400 mt-1">Cần ưu tiên gấp</div>
+          <div className="text-[10px] text-slate-400 mt-1">Cần đẩy tiến độ</div>
         </div>
       </div>
 
-      {/* Overall Progress Banner */}
+      {/* Completion Rate Banner */}
       <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
         <div className="flex items-center justify-between mb-2">
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-blue-600" />
-              <span>Tiến độ tổng thể toàn đội</span>
+              <TrendingUp className="w-4 h-4 text-emerald-600" />
+              <span>Tỷ Lệ Công Việc Đã Hoàn Thành</span>
             </h3>
             <p className="text-xs text-slate-500">
-              Tổng hợp tiến độ hoàn thành các đầu mục công việc và checklist
+              {doneTasks} công việc hoàn thành / {totalTasks} công việc đang active ({completionRate}%)
             </p>
           </div>
-          <div className="text-xl font-bold text-blue-600 dark:text-blue-400 font-mono">
-            {teamOverallProgress}%
+          <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+            {completionRate}%
           </div>
         </div>
         <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
           <div
-            className="h-full bg-blue-600 transition-all duration-500 rounded-full"
-            style={{ width: `${teamOverallProgress}%` }}
+            className="h-full bg-emerald-500 transition-all duration-500 rounded-full"
+            style={{ width: `${completionRate}%` }}
           />
         </div>
       </div>
 
-      {/* 4 Roles Progress Cards */}
+      {/* 4 Roles Overview */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Tiến độ &amp; Trách nhiệm theo 4 Vai trò
+            Trách Nhiệm Theo 4 Vai Trò Cốt Lõi
           </h2>
-          <span className="text-xs text-slate-400">Bấm vào vai trò để truy vết trên Bản đồ</span>
+          <span className="text-xs text-slate-400">Bấm vào vai trò để lọc trên Bản đồ</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {roles.map((role) => {
             const primaryPerson = people.find((p) => p.roleId === role.id && p.isPrimary);
             const myOwnerTasks = tasks.filter((t) => t.ownerRoleId === role.id);
-            const myCollabTasks = tasks.filter((t) => (t.collaboratorRoleIds || []).includes(role.id));
+            const myCollabTasks = tasks.filter((t) =>
+              (t.collaborators || []).some((c) => c.roleId === role.id)
+            );
             const allInvolved = [...myOwnerTasks, ...myCollabTasks];
-
             const roleDoneCount = allInvolved.filter((t) => t.status === 'DONE').length;
-            const roleProgress =
-              allInvolved.length > 0
-                ? Math.round(
-                    allInvolved.reduce((acc, t) => acc + getTaskProgress(t, checklists), 0) /
-                      allInvolved.length
-                  )
-                : 0;
 
             const borderColors: Record<RoleId, string> = {
               1: 'border-blue-200 dark:border-blue-900/60 bg-blue-50/40 dark:bg-blue-950/20',
@@ -242,7 +248,7 @@ export const OverviewView: React.FC = () => {
                     <span className="text-xs font-mono font-bold text-slate-500">0{role.id}</span>
                   </div>
                   <span className="text-xs font-bold text-slate-700 dark:text-slate-300 font-mono">
-                    {roleProgress}%
+                    {roleDoneCount}/{allInvolved.length} hoàn thành
                   </span>
                 </div>
 
@@ -250,23 +256,15 @@ export const OverviewView: React.FC = () => {
                   {role.name}
                 </h3>
 
-                {/* Primary Person */}
                 <div className="text-xs text-slate-700 dark:text-slate-300 font-semibold mb-3 flex items-center gap-1.5">
                   <span className="text-slate-400 font-normal">Phụ trách:</span>
                   <span>{primaryPerson?.fullName || 'Chưa gán'}</span>
                 </div>
 
-                <div className="flex items-center justify-between text-[11px] text-slate-500 mb-2">
-                  <span>{myOwnerTasks.length} việc chính</span>
+                <div className="flex items-center justify-between text-[11px] text-slate-500">
+                  <span>{myOwnerTasks.length} việc cầm chính</span>
                   <span>·</span>
                   <span>{myCollabTasks.length} việc phối hợp</span>
-                </div>
-
-                <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-300 ${dotColors[role.id]}`}
-                    style={{ width: `${roleProgress}%` }}
-                  />
                 </div>
               </div>
             );
@@ -274,7 +272,7 @@ export const OverviewView: React.FC = () => {
         </div>
       </div>
 
-      {/* TASK CẦN CHÚ Ý (Attention Tasks) */}
+      {/* Attention Tasks */}
       <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -290,7 +288,7 @@ export const OverviewView: React.FC = () => {
             onClick={() => setActiveTab('tasks')}
             className="text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
           >
-            Xem tất cả trong bảng →
+            Xem danh sách đầy đủ →
           </button>
         </div>
 
@@ -300,20 +298,19 @@ export const OverviewView: React.FC = () => {
             <div
               key={task.id}
               onClick={() => setSelectedTaskId(task.id)}
-              className="p-3 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50/40 dark:bg-red-950/20 cursor-pointer hover:bg-red-50 transition"
+              className="p-3 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50/40 dark:bg-red-950/20 cursor-pointer hover:bg-red-50 transition space-y-1.5"
             >
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between">
                 <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/60 dark:text-red-300">
                   {task.id} · Quá hạn
                 </span>
-                <span className="text-[11px] font-medium text-red-600">
-                  {task.dueDate}
-                </span>
+                <span className="text-[11px] font-medium text-red-600">{task.dueAt}</span>
               </div>
-              <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 line-clamp-1 mb-2">
+              <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 line-clamp-1">
                 {task.title}
               </h4>
-              <div className="flex items-center justify-between">
+              <p className="text-[11px] text-slate-500 line-clamp-1">Output: {task.output}</p>
+              <div className="flex items-center justify-between pt-1">
                 <RoleBadge roleId={task.ownerRoleId} size="sm" />
                 <StatusBadge status={task.status} size="sm" />
               </div>
@@ -328,54 +325,56 @@ export const OverviewView: React.FC = () => {
               <div
                 key={task.id}
                 onClick={() => setSelectedTaskId(task.id)}
-                className="p-3 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/20 cursor-pointer hover:bg-rose-50 transition"
+                className="p-3 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/20 cursor-pointer hover:bg-rose-50 transition space-y-1.5"
               >
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center justify-between">
                   <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/60 dark:text-rose-300">
                     {task.id} · Bị vướng
                   </span>
-                  <PriorityBadge priority={task.priority} />
+                  <PriorityBadge priority={task.priority || 'MEDIUM'} />
                 </div>
-                <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 line-clamp-1 mb-2">
+                <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 line-clamp-1">
                   {task.title}
                 </h4>
-                <div className="flex items-center justify-between">
+                <p className="text-[11px] text-slate-500 line-clamp-1">Output: {task.output}</p>
+                <div className="flex items-center justify-between pt-1">
                   <RoleBadge roleId={task.ownerRoleId} size="sm" />
-                  <span className="text-[11px] text-rose-600 font-medium">Cần xử lý rào cản</span>
+                  <span className="text-[11px] text-rose-600 font-medium">Cần hỗ trợ</span>
                 </div>
               </div>
             ))}
 
-          {/* Waiting on others */}
-          {waitingTasks.slice(0, 3).map((task) => (
+          {/* Due soon */}
+          {dueSoonTasks.slice(0, 3).map((task) => (
             <div
               key={task.id}
               onClick={() => setSelectedTaskId(task.id)}
-              className="p-3 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/40 dark:bg-amber-950/20 cursor-pointer hover:bg-amber-50 transition"
+              className="p-3 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/40 dark:bg-amber-950/20 cursor-pointer hover:bg-amber-50 transition space-y-1.5"
             >
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between">
                 <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300">
-                  {task.id} · Đang chờ kết quả
+                  {task.id} · Sắp đến hạn
                 </span>
-                <StatusBadge status={task.status} size="sm" />
+                <span className="text-[11px] font-medium text-amber-700">{task.dueAt}</span>
               </div>
-              <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 line-clamp-1 mb-2">
+              <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 line-clamp-1">
                 {task.title}
               </h4>
-              <div className="flex items-center justify-between">
+              <p className="text-[11px] text-slate-500 line-clamp-1">Output: {task.output}</p>
+              <div className="flex items-center justify-between pt-1">
                 <RoleBadge roleId={task.ownerRoleId} size="sm" />
-                <span className="text-[11px] text-amber-700 dark:text-amber-300 font-medium">
-                  Chờ hoàn thành task trước
-                </span>
+                <StatusBadge status={task.status} size="sm" />
               </div>
             </div>
           ))}
 
-          {overdueTasks.length === 0 && tasks.filter((t) => t.status === 'BLOCKED').length === 0 && waitingTasks.length === 0 && (
-            <div className="col-span-3 text-center py-6 text-xs text-slate-500">
-              ✓ Không có công việc nào bị tắc nghẽn hoặc quá hạn lúc này.
-            </div>
-          )}
+          {overdueTasks.length === 0 &&
+            tasks.filter((t) => t.status === 'BLOCKED').length === 0 &&
+            dueSoonTasks.length === 0 && (
+              <div className="col-span-3 text-center py-6 text-xs text-slate-500">
+                ✓ Không có công việc nào bị quá hạn hoặc bị vướng lúc này.
+              </div>
+            )}
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BaseEdge, getSmoothStepPath, EdgeProps, EdgeLabelRenderer } from '@xyflow/react';
+import { BaseEdge, getSmoothStepPath, getBezierPath, EdgeProps, EdgeLabelRenderer } from '@xyflow/react';
 import { RoleId } from '../../types';
 
 export interface RelationshipEdgeData {
@@ -22,55 +22,70 @@ export const RelationshipEdge: React.FC<EdgeProps> = ({
   markerEnd,
   data,
 }) => {
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-    borderRadius: 16,
-  });
-
   const edgeData = (data as unknown as RelationshipEdgeData) || {
     relationshipType: 'OWNER',
     isDimmed: false,
     isHighlighted: false,
   };
 
-  const roleColors: Record<RoleId, string> = {
-    1: '#2563EB', // Blue
-    2: '#7C3AED', // Purple
-    3: '#059669', // Green
-    4: '#EA580C', // Orange
-  };
+  const isFeedback = edgeData.relationshipType === 'FEEDBACK';
 
-  let strokeColor = '#94a3b8';
-  if (edgeData.roleId && roleColors[edgeData.roleId]) {
-    strokeColor = roleColors[edgeData.roleId];
-  } else if (edgeData.relationshipType === 'FEEDBACK') {
-    strokeColor = '#ec4899';
-  } else if (edgeData.relationshipType === 'DEPENDENCY' || edgeData.relationshipType === 'HANDOFF') {
-    strokeColor = '#64748b';
-  }
+  const [edgePath, labelX, labelY] = isFeedback
+    ? getBezierPath({
+        sourceX,
+        sourceY,
+        sourcePosition,
+        targetX,
+        targetY,
+        targetPosition,
+        curvature: 0.35,
+      })
+    : getSmoothStepPath({
+        sourceX,
+        sourceY,
+        sourcePosition,
+        targetX,
+        targetY,
+        targetPosition,
+        borderRadius: 16,
+      });
 
-  let strokeWidth = 1.5;
+  // Strict relationship styling - role colors are NOT used as relation-edge meaning
+  let strokeColor = '#64748B';
+  let strokeWidth = 2;
   let strokeDasharray = undefined;
 
-  if (edgeData.relationshipType === 'OWNER') {
-    strokeWidth = edgeData.isHighlighted ? 3 : 2;
-  } else if (edgeData.relationshipType === 'COLLABORATOR') {
-    strokeWidth = edgeData.isHighlighted ? 2 : 1.2;
-    strokeDasharray = '4 3';
-  } else if (edgeData.relationshipType === 'APPROVER') {
-    strokeWidth = 1.5;
-    strokeDasharray = '2 2';
-  } else if (edgeData.relationshipType === 'FEEDBACK') {
-    strokeWidth = 2;
-    strokeDasharray = '5 4';
+  switch (edgeData.relationshipType) {
+    case 'OWNER':
+      strokeColor = '#2563EB'; // Solid blue 3px
+      strokeWidth = edgeData.isHighlighted ? 3.5 : 3;
+      strokeDasharray = undefined;
+      break;
+    case 'COLLABORATOR':
+      strokeColor = '#94A3B8'; // Dashed slate 2px
+      strokeWidth = edgeData.isHighlighted ? 2.5 : 2;
+      strokeDasharray = '5 4';
+      break;
+    case 'APPROVER':
+      strokeColor = '#F59E0B'; // Solid amber 2px
+      strokeWidth = edgeData.isHighlighted ? 2.5 : 2;
+      strokeDasharray = undefined;
+      break;
+    case 'FEEDBACK':
+      strokeColor = '#10B981'; // Dashed emerald 2px curved
+      strokeWidth = edgeData.isHighlighted ? 2.5 : 2;
+      strokeDasharray = '6 4';
+      break;
+    case 'DEPENDENCY':
+    case 'HANDOFF':
+    default:
+      strokeColor = '#64748B'; // Solid slate 2px
+      strokeWidth = edgeData.isHighlighted ? 2.5 : 2;
+      strokeDasharray = undefined;
+      break;
   }
 
-  const opacity = edgeData.isDimmed ? 0.08 : edgeData.isHighlighted ? 1 : 0.45;
+  const opacity = edgeData.isDimmed ? 0.08 : edgeData.isHighlighted ? 1 : 0.55;
 
   return (
     <>

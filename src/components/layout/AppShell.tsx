@@ -1,30 +1,22 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useAppStore } from '../../store/useAppStore';
+import { useResolvedTheme } from '../../hooks/useResolvedTheme';
 import { Topbar } from './Topbar';
 import { Sidebar } from './Sidebar';
 import { OverviewView } from '../../features/overview/OverviewView';
 import { RelationshipMap } from '../../features/map/RelationshipMap';
-import { MyWorkView } from '../../features/mywork/MyWorkView';
-import { ChecklistView } from '../../features/checklist/ChecklistView';
-import { MembersView } from '../../features/members/MembersView';
 import { TaskTableView } from '../../features/tasks/TaskTableView';
+import { MembersView } from '../../features/members/MembersView';
 import { SheetsSettingsView } from '../../features/sheets/SheetsSettingsView';
 import { SettingsView } from '../../features/settings/SettingsView';
 import { TaskDrawer } from '../drawer/TaskDrawer';
 import { TaskFormModal } from '../modal/TaskFormModal';
-import { CompletionPromptModal } from '../modal/CompletionPromptModal';
 import { OnboardingModal } from '../onboarding/OnboardingModal';
 
 export const AppShell: React.FC = () => {
-  const { activeTab, settings } = useAppStore();
-
-  // Initialize theme on mount
-  useEffect(() => {
-    const isDark =
-      settings.theme === 'dark' ||
-      (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    document.documentElement.classList.toggle('dark', isDark);
-  }, [settings.theme]);
+  const { activeTab } = useAppStore();
+  // Initializes and synchronizes theme globally
+  useResolvedTheme();
 
   const renderContent = () => {
     switch (activeTab) {
@@ -32,14 +24,10 @@ export const AppShell: React.FC = () => {
         return <OverviewView />;
       case 'map':
         return <RelationshipMap />;
-      case 'my-work':
-        return <MyWorkView />;
-      case 'checklist':
-        return <ChecklistView />;
-      case 'members':
-        return <MembersView />;
       case 'tasks':
         return <TaskTableView />;
+      case 'members':
+        return <MembersView />;
       case 'sheets':
         return <SheetsSettingsView />;
       case 'settings':
@@ -50,25 +38,24 @@ export const AppShell: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors">
-      {/* Topbar */}
+    <div className="flex flex-col h-screen overflow-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors">
       <Topbar />
 
-      {/* Main workspace layout */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
+      <div className="flex flex-1 overflow-hidden min-h-0">
         <Sidebar />
 
-        {/* Dynamic page content */}
-        <main className="flex-1 overflow-y-auto">
+        <main
+          className={`flex-1 min-h-0 h-full ${
+            activeTab === 'map' ? 'overflow-hidden' : 'overflow-y-auto'
+          }`}
+        >
           {renderContent()}
         </main>
+
+        <TaskDrawer />
       </div>
 
-      {/* Global Modals & Drawers */}
-      <TaskDrawer />
       <TaskFormModal />
-      <CompletionPromptModal />
       <OnboardingModal />
     </div>
   );
